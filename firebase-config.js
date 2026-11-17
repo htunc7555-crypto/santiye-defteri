@@ -1,13 +1,12 @@
-// README.md içindeki 1. adımda Firebase'den alacağın bilgileri buraya yapıştır.
+// Firebase bağlantı bilgileri
 window.FIREBASE_CONFIG = {
-  apiKey: "BURAYA_apiKey",
-  authDomain: "BURAYA_authDomain",
-  projectId: "BURAYA_projectId",
-  storageBucket: "BURAYA_storageBucket",
-  messagingSenderId: "BURAYA_messagingSenderId",
-  appId: "BURAYA_appId"
+  apiKey: "AIzaSyAG7ljcCYGPPvuLR93WBzyJXYzcyIyCWzY",
+  authDomain: "santiye-defteri-fbd46.firebaseapp.com",
+  projectId: "santiye-defteri-fbd46",
+  storageBucket: "santiye-defteri-fbd46.firebasestorage.app",
+  messagingSenderId: "145862633307",
+  appId: "1:145862633307:web:eff02480da67459c74dc7e"
 };
 
-// Firebase'de oluşturacağın ortak kullanıcının e-postası (şifresi = uygulamadaki ortak şifre).
-// Gerçek bir e-posta olması gerekmez, README'deki ile aynı olsun yeter.
+// Firebase'deki ortak kullanıcının e-postası (şifresi = uygulamadaki ortak şifre)
 window.FIRMA_EMAIL = "firma@santiyedefteri.com";
