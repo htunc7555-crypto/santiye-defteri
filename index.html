@@ -222,7 +222,7 @@ var CATS=['Malzeme','Yakıt','Yemek','Ulaşım','Kira','Alet / Ekipman','Elektri
 var COLL={mjobs:'muteahhitisleri',workers:'calisanlar',teams:'ekipler',timesheet:'puantaj',jobs:'isler',payments:'odemeler',expenses:'giderler',income:'gelirler',partners:'ortaklar'};
 var S={settings:Object.assign({},DEF),mjobs:[],workers:[],teams:[],timesheet:[],jobs:[],payments:[],expenses:[],income:[],partners:[]};
 var loaded={},settingsLoaded=false,dbErr=null,readOnly=false,slow=false;
-var db=null,userApi=null;
+var db=null,userApi=null,authRef=null;
 var view='home',date=today(),feedFilter='all',feedLimit=60,peopleTab='workers';
 var chains=new Map();
 
@@ -491,6 +491,7 @@ function viewAyar(){
     '<label class="fld"><span>Mesai katsayısı</span><input id="s_ot" type="text" inputmode="decimal" value="'+esc(s.otMult)+'"></label>'+
     '<label class="fld"><span>Müteahhit sözleşme bedeli (₺, isteğe bağlı)</span><input id="s_contract" type="text" inputmode="decimal" value="'+esc(s.contract)+'"><small>Girerseniz Özet sayfasında kalan alacak görünür.</small></label>'+
     '<p class="err" id="s_err"></p><button class="btn primary block" data-act="savesettings">Kaydet</button></div>'+
+    '<button class="btn danger block" data-act="logout" style="margin-top:14px">Çıkış yap</button>'+
     '<p style="color:var(--muted);font-size:13px;margin:14px 2px">Ortağınız aynı şifreyle kendi telefonundan girer. Girilen kayıtlar iki telefonda da görünür. İnternet yokken girilen kayıtlar telefonda saklanır, bağlantı gelince otomatik eşitlenir.</p>';
 }
 
@@ -750,6 +751,11 @@ document.addEventListener('click',function(ev){
     var day2=dayRef(true);day2.entries=JSON.parse(JSON.stringify(y.entries||{}));if(!day2.site)day2.site=y.site||'';
     persistDay(day2);sched();toast('Dünkü liste kopyalandı');
   }
+  else if(a==='logout'){
+    if(!confirm('Çıkış yapılsın mı? Tekrar girmek için şifre gerekir.'))return;
+    var done=function(){location.reload()};
+    try{authRef?authRef.signOut().then(done,done):done()}catch(e){done()}
+  }
   else if(a==='savesettings'){
     var g=function(i){return document.getElementById(i).value};
     var sh=num(g('s_share')),hr=num(g('s_hours')),ot=num(g('s_ot')),ct=g('s_contract').trim()?num(g('s_contract')):0;
@@ -787,7 +793,7 @@ async function init(){
   var cfg=window.FIREBASE_CONFIG;
   if(!cfg||!cfg.apiKey||/YOUR_|BURAYA/i.test(cfg.apiKey)){dbErr='nodb';render();return}
   firebase.initializeApp(cfg);
-  var auth=firebase.auth(),fs=firebase.firestore();
+  var auth=firebase.auth(),fs=firebase.firestore();authRef=auth;
   try{await fs.enablePersistence({synchronizeTabs:true})}catch(e){}
   db=fs;
   var started=false;
