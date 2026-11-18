@@ -161,6 +161,14 @@ dl dt.tot{color:var(--ink)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);
   padding:10px 16px;border-radius:999px;font-size:14px;z-index:60;max-width:calc(100% - 32px);text-align:center}
 #toast.bad{background:var(--neg);color:#fff}
+#chg{position:fixed;left:0;right:0;bottom:calc(66px + env(safe-area-inset-bottom,0px));z-index:19;display:flex;justify-content:center;padding:0 max(12px,env(safe-area-inset-left,0px))}
+#chg .in{display:flex;align-items:center;width:100%;max-width:560px;background:var(--ink);color:var(--bg);border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.28);overflow:hidden}
+#chg .go{flex:1;min-width:0;text-align:left;padding:10px 14px;font-size:14px;font-weight:600;min-height:52px;color:inherit}
+#chg .go small{display:block;font-weight:400;opacity:.8;font-size:12px}
+#chg .x{width:52px;min-height:52px;font-size:18px;color:inherit;opacity:.85}
+body.hasbar{padding-bottom:calc(144px + env(safe-area-inset-bottom,0px))}
+body.hasbar #fab{bottom:calc(136px + env(safe-area-inset-bottom,0px))}
+body.hasbar #toast{bottom:calc(144px + env(safe-area-inset-bottom,0px))}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:no-preference){
   #sheet .panel{animation:up .18s ease-out}
@@ -187,6 +195,7 @@ dl dt.tot{color:var(--ink)}
   </div>
 </div>
 <div id="toast" hidden></div>
+<div id="chg" hidden></div>
 
 <div id="login" hidden><div class="lbox"><svg viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="10" fill="#1B2F52"/><path d="M8 19L22 7l14 12" fill="none" stroke="#F28C28" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 22v14M30 22v14M14 29h16" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/></svg>
 <h1>Hakan Tunç İnşaat</h1><p>Şantiye Defteri</p>
@@ -240,9 +249,78 @@ function canWrite(){
   return true;
 }
 function enqueue(path,fn){return Promise.resolve().then(fn)}
-function dput(coll,id,data){return enqueue(coll+'/'+id,function(){return db.doc(coll+'/'+id).set(data)}).catch(fail)}
+var ME=null,SEEN=0,askedWho=false;
+var REV={};Object.keys(COLL).forEach(function(k){REV[COLL[k]]=k});
+try{var m0=localStorage.getItem('sd_me');ME=(m0==='p1'||m0==='p2')?m0:null;SEEN=+localStorage.getItem('sd_seen')||0}catch(e){}
+function saveMe(v){ME=v;SEEN=0;try{localStorage.setItem('sd_me',v);localStorage.setItem('sd_seen','0')}catch(e){}}
+function saveSeen(ts){SEEN=ts;try{localStorage.setItem('sd_seen',String(ts))}catch(e){}}
+function whoName(k){return (S.settings&&S.settings[k])||(k==='p1'?'1. ortak':'2. ortak')}
+function stamp(coll,id,data){
+  if(!ME||coll==='ayarlar')return data;
+  var k=REV[coll],ex=k?S[k].find(function(x){return x.id===id}):null;
+  var o=Object.assign({},data,{by:ME,upd:Date.now()});
+  var cr=ex?(ex.cr||0):Date.now();
+  if(cr)o.cr=cr;else delete o.cr;
+  return o;
+}
+function dput(coll,id,data){data=stamp(coll,id,data);return enqueue(coll+'/'+id,function(){return db.doc(coll+'/'+id).set(data)}).catch(fail)}
 function ddel(coll,id){return enqueue(coll+'/'+id,function(){return db.doc(coll+'/'+id).delete()}).catch(fail)}
 function newId(coll){return db.collection(coll).doc().id}
+
+/* ---------- değişiklik bildirimi ---------- */
+function changeItems(){
+  if(!ME||!allLoaded())return [];
+  var out=[];
+  function add(i,d,isDay){
+    if(!d.by||d.by===ME||!(d.upd>SEEN))return;
+    i.by=d.by;i.upd=d.upd;i.isNew=!isDay&&!!d.cr&&d.cr>SEEN;out.push(i);
+  }
+  feedItems().forEach(function(i){add(i,i,false)});
+  S.workers.forEach(function(w){add({t:'worker',id:w.id,title:w.name||'Çalışan',sub:'Çalışan · günlük '+money(w.rate),amt:null},w,false)});
+  S.teams.forEach(function(x){add({t:'team',id:x.id,title:x.name||'Ekip',sub:'Ekip',amt:null},x,false)});
+  S.timesheet.forEach(function(d){var n=Object.keys(d.entries||{}).length;
+    add({t:'day',id:d.id,title:'Puantaj · '+trDate(d.date),sub:n+' kişi'+(d.site?' · '+d.site:''),amt:null},d,true)});
+  out.sort(function(a,b){return b.upd-a.upd});
+  return out;
+}
+function chgText(items){
+  var by={};
+  items.forEach(function(i){var b=by[i.by]||(by[i.by]={n:0,e:0});if(i.isNew)b.n++;else b.e++});
+  return Object.keys(by).map(function(k){
+    var b=by[k],p=[];
+    if(b.n)p.push(b.n+' kayıt ekledi');
+    if(b.e)p.push(b.e+' kaydı değiştirdi');
+    return whoName(k)+' '+p.join(', ');
+  }).join(' · ');
+}
+function updateBar(){
+  var box=$('#chg'),its=changeItems();
+  if(!its.length){box.hidden=true;box.innerHTML='';document.body.classList.remove('hasbar');return}
+  box.innerHTML='<div class="in"><button class="go" data-act="chgopen">'+esc(chgText(its))+'<small>Görmek için dokunun</small></button><button class="x" data-act="chgseen" aria-label="Gördüm">✕</button></div>';
+  box.hidden=false;document.body.classList.add('hasbar');
+}
+function openChg(){
+  var its=changeItems();if(!its.length)return;
+  var h='<div class="list">'+its.map(function(i){
+    var hasAmt=typeof i.amt==='number';
+    var sign=(!hasAmt||i.neutral)?'':(i.amt<0?'−':'+');
+    var cls=(!hasAmt||i.neutral)?'':(i.amt<0?'neg':'pos');
+    var w=new Date(i.upd);
+    var attrs=i.t==='day'?' data-act="seeday" data-id="'+esc(i.id)+'"':
+      (i.t==='worker'||i.t==='team')?' data-act="person" data-k="'+i.t+'" data-id="'+esc(i.id)+'"':
+      ' data-act="rec" data-t="'+i.t+'" data-id="'+esc(i.id)+'"';
+    return '<button class="row"'+attrs+'><div class="main"><div class="t">'+esc(i.title)+'</div>'+
+      '<div class="s">'+(i.date?trDate(i.date)+' · ':'')+esc(i.sub)+'</div>'+
+      '<div class="s">'+esc(whoName(i.by))+' · '+trDate(iso(w))+' '+pad(w.getHours())+':'+pad(w.getMinutes())+'</div></div>'+
+      '<div class="amt '+cls+'">'+(hasAmt?sign+money(Math.abs(i.amt)):'')+'<small><span class="tag '+(i.isNew?'in':'prop')+'">'+(i.isNew?'Yeni':'Değişti')+'</span></small></div></button>';
+  }).join('')+'</div>';
+  openSheet('Yeni değişiklikler',h,'<button class="btn primary" data-act="chgseen">Gördüm</button>');
+}
+function askWho(){
+  openSheet('Bu telefon kimin?','<p style="color:var(--muted);margin:0 0 12px">Kayıtlarda kimin girdiğini göstermek için bir kez seçin.</p>'+
+    '<div class="actions"><button class="act" data-act="iam" data-v="p1"><b>'+esc(whoName('p1'))+'</b></button>'+
+    '<button class="act" data-act="iam" data-v="p2"><b>'+esc(whoName('p2'))+'</b></button></div>','');
+}
 
 /* ---------- hesaplar ---------- */
 function compute(){
@@ -368,17 +446,17 @@ function mjLine(j){
 function ptLabel(p){return p.ptype==='avans'?'Avans':p.ptype==='hakedis'?'Hakediş':'Ödeme'}
 function feedItems(){
   var it=[];
-  S.payments.forEach(function(p){it.push({t:'odeme',f:'odeme',id:p.id,date:p.date,ts:p.ts||0,title:p.name||'Ödeme',
+  S.payments.forEach(function(p){it.push({t:'odeme',f:'odeme',id:p.id,date:p.date,ts:p.ts||0,upd:p.upd||0,by:p.by||'',cr:p.cr||0,title:p.name||'Ödeme',
     sub:(p.kind==='team'?'Ekip':'Yevmiyeli')+payerTxt(p.payer)+(p.note?' · '+p.note:''),amt:-(+p.amount||0),tag:ptLabel(p),cls:'out'})});
-  S.expenses.forEach(function(g){it.push({t:'gider',f:'gider',id:g.id,date:g.date,ts:g.ts||0,title:g.desc||g.cat||'Gider',
+  S.expenses.forEach(function(g){it.push({t:'gider',f:'gider',id:g.id,date:g.date,ts:g.ts||0,upd:g.upd||0,by:g.by||'',cr:g.cr||0,title:g.desc||g.cat||'Gider',
     sub:(g.cat||'Gider')+payerTxt(g.payer)+(g.doc?' · Belge '+g.doc:''),amt:-(+g.amount||0),tag:'Gider',cls:'out'})});
-  S.income.forEach(function(g){var pr=g.type==='property';it.push({t:'gelir',f:'gelir',id:g.id,date:g.date,ts:g.ts||0,title:g.desc||(pr?'Gayrimenkul':g.type==='yev'?'Yevmiye bedeli':'Nakit'),
+  S.income.forEach(function(g){var pr=g.type==='property';it.push({t:'gelir',f:'gelir',id:g.id,date:g.date,ts:g.ts||0,upd:g.upd||0,by:g.by||'',cr:g.cr||0,title:g.desc||(pr?'Gayrimenkul':g.type==='yev'?'Yevmiye bedeli':'Nakit'),
     sub:(pr?'Gayrimenkul (değer)':g.type==='yev'?'Yevmiye bedeli':'Nakit tahsilat')+(g.note?' · '+g.note:''),amt:(+g.amount||0),neutral:pr,tag:pr?'Gayrimenkul':'Gelir',cls:pr?'prop':'in'})});
-  S.partners.forEach(function(p){var tk=p.op==='take';it.push({t:'ortak',f:'ortak',id:p.id,date:p.date,ts:p.ts||0,title:pname(p.partner),
+  S.partners.forEach(function(p){var tk=p.op==='take';it.push({t:'ortak',f:'ortak',id:p.id,date:p.date,ts:p.ts||0,upd:p.upd||0,by:p.by||'',cr:p.cr||0,title:pname(p.partner),
     sub:(tk?'Para çekme':'Sermaye koyma')+(p.note?' · '+p.note:''),amt:tk?-(+p.amount||0):(+p.amount||0),tag:'Ortak',cls:tk?'out':'in'})});
-  S.jobs.forEach(function(j){it.push({t:'is',f:'is',id:j.id,date:j.date,ts:j.ts||0,title:j.teamName||'Ekip işi',
+  S.jobs.forEach(function(j){it.push({t:'is',f:'is',id:j.id,date:j.date,ts:j.ts||0,upd:j.upd||0,by:j.by||'',cr:j.cr||0,title:j.teamName||'Ekip işi',
     sub:(j.desc||'İş')+' · '+nf.format(+j.qty||0)+' '+(j.unit||'')+' × '+money(j.price),amt:(+j.qty||0)*(+j.price||0),neutral:true,tag:'Ekip işi',cls:''})});
-  S.mjobs.forEach(function(j){it.push({t:'mj',f:'mj',id:j.id,date:j.date,ts:j.ts||0,title:(j.contractor||'Müteahhit')+(j.desc?' · '+j.desc:''),
+  S.mjobs.forEach(function(j){it.push({t:'mj',f:'mj',id:j.id,date:j.date,ts:j.ts||0,upd:j.upd||0,by:j.by||'',cr:j.cr||0,title:(j.contractor||'Müteahhit')+(j.desc?' · '+j.desc:''),
     sub:mjLine(j),amt:+j.total||0,neutral:true,tag:'Müteahhit işi',cls:'prop'})});
   it.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:(b.ts-a.ts)});
   return it;
@@ -491,6 +569,7 @@ function viewAyar(){
     '<label class="fld"><span>Mesai katsayısı</span><input id="s_ot" type="text" inputmode="decimal" value="'+esc(s.otMult)+'"></label>'+
     '<label class="fld"><span>Müteahhit sözleşme bedeli (₺, isteğe bağlı)</span><input id="s_contract" type="text" inputmode="decimal" value="'+esc(s.contract)+'"><small>Girerseniz Özet sayfasında kalan alacak görünür.</small></label>'+
     '<p class="err" id="s_err"></p><button class="btn primary block" data-act="savesettings">Kaydet</button></div>'+
+    '<div class="info" style="margin-top:14px"><span>Bu telefon</span><button class="btn sm" data-act="whoami">'+esc(ME?whoName(ME):'Seçilmedi')+' · Değiştir</button></div>'+
     '<button class="btn danger block" data-act="logout" style="margin-top:14px">Çıkış yap</button>'+
     '<p style="color:var(--muted);font-size:13px;margin:14px 2px">Ortağınız aynı şifreyle kendi telefonundan girer. Girilen kayıtlar iki telefonda da görünür. İnternet yokken girilen kayıtlar telefonda saklanır, bağlantı gelince otomatik eşitlenir.</p>';
 }
@@ -511,6 +590,8 @@ function render(){
   var nav=$('#nav .in');
   nav.innerHTML=NAV.map(function(n){return '<button class="'+(view===n[0]?'on':'')+'" data-act="goto" data-v="'+n[0]+'" aria-label="'+n[1]+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+ICONS[n[0]]+'</svg>'+n[1]+'</button>'}).join('');
   $('#fab').hidden=!(view==='hareket');
+  updateBar();
+  if(!ME&&allLoaded()&&!askedWho&&$('#sheet').hidden){askedWho=true;askWho()}
   if(typing()){pendingRender=true;return}
   pendingRender=false;
   var h='';
@@ -751,6 +832,14 @@ document.addEventListener('click',function(ev){
     var day2=dayRef(true);day2.entries=JSON.parse(JSON.stringify(y.entries||{}));if(!day2.site)day2.site=y.site||'';
     persistDay(day2);sched();toast('Dünkü liste kopyalandı');
   }
+  else if(a==='chgopen'){openChg()}
+  else if(a==='chgseen'){
+    var mx=changeItems().reduce(function(m,i){return Math.max(m,i.upd)},SEEN);
+    saveSeen(mx);closeSheet();sched();
+  }
+  else if(a==='iam'){saveMe(v);closeSheet();sched();toast('Bu telefon: '+whoName(v))}
+  else if(a==='whoami'){askWho()}
+  else if(a==='seeday'){date=id;view='puantaj';closeSheet();sched();window.scrollTo(0,0)}
   else if(a==='logout'){
     if(!confirm('Çıkış yapılsın mı? Tekrar girmek için şifre gerekir.'))return;
     var done=function(){location.reload()};
